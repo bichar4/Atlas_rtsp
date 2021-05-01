@@ -23,10 +23,10 @@
 #include "Singleton.h"
 #include "FileManager/FileManager.h"
 
-
 using namespace ascendBaseModule;
 
-namespace {
+namespace
+{
     const int YOLOV3_CAFFE = 0;
     const int YOLOV3_TF = 1;
     const int BUFFER_SIZE = 5;
@@ -45,12 +45,15 @@ APP_ERROR PostProcess::Init(ConfigParser &configParser, ModuleInitArgs &initArgs
 
     AssignInitArgs(initArgs);
 
-    for (int i = 0; i < BUFFER_SIZE; ++i) {
+    for (int i = 0; i < BUFFER_SIZE; ++i)
+    {
         std::vector<void *> temp;
-        for (size_t j = 0; j < ModelBufferSize::outputSize_; j++) {
+        for (size_t j = 0; j < ModelBufferSize::outputSize_; j++)
+        {
             void *hostPtrBuffer = nullptr;
             APP_ERROR ret = (APP_ERROR)aclrtMallocHost(&hostPtrBuffer, ModelBufferSize::bufferSize_[j]);
-            if (ret != APP_ERR_OK) {
+            if (ret != APP_ERR_OK)
+            {
                 LogError << "Failed to malloc output buffer of model on host, ret = " << ret;
                 return ret;
             }
@@ -64,7 +67,8 @@ APP_ERROR PostProcess::Init(ConfigParser &configParser, ModuleInitArgs &initArgs
 
 void PostProcess::ConstructData(std::vector<ObjDetectInfo> &objInfos, std::shared_ptr<DeviceStreamData> &dataToSend)
 {
-    for (int k = 0; k < objInfos.size(); ++k) {
+    for (int k = 0; k < objInfos.size(); ++k)
+    {
         ObjectDetectInfo detectInfo;
         detectInfo.location.leftTopX = objInfos[k].leftTopX;
         detectInfo.location.leftTopY = objInfos[k].leftTopY;
@@ -81,9 +85,11 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
     std::string resultPathName = "result";
     uint32_t objNum = objInfos.size();
     // Create result directory when it does not exist
-    if (access(resultPathName.c_str(), 0) != 0) {
+    if (access(resultPathName.c_str(), 0) != 0)
+    {
         int ret = mkdir(resultPathName.c_str(), S_IRUSR | S_IWUSR | S_IXUSR); // for linux
-        if (ret != 0) {
+        if (ret != 0)
+        {
             LogError << "Failed to create result directory: " << resultPathName << ", ret = " << ret;
             return ret;
         }
@@ -96,10 +102,10 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
     char timeString[TIME_STRING_SIZE] = {0};
     time_t timeVal = time.tv_sec + TIME_DIFF_S;
     struct tm *ptm = gmtime(&timeVal);
-    if (ptm != nullptr) {
+    if (ptm != nullptr)
+    {
         strftime(timeString, sizeof(timeString), "%Y%m%d%H%M%S", ptm);
     }
-
 
     // Create result file under result directory
     std::stringstream formatStr;
@@ -109,14 +115,17 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
     std::ofstream tfile(resultPathName);
 
     // Check result file validity
-    if (tfile.fail()) {
+    if (tfile.fail())
+    {
         LogError << "Failed to open result file: " << resultPathName;
         return APP_ERR_COMM_OPEN_FAIL;
     }
     tfile << "[Channel" << channelId << "-Frame" << frameId << "] Object detected number is " << objNum << std::endl;
     // Write inference result into file
-    for (uint32_t i = 0; i < objNum; i++) {
-        tfile << "#Obj" << i << ", " << "box(" << objInfos[i].leftTopX << ", " << objInfos[i].leftTopY << ", "
+    for (uint32_t i = 0; i < objNum; i++)
+    {
+        tfile << "#Obj" << i << ", "
+              << "box(" << objInfos[i].leftTopX << ", " << objInfos[i].leftTopY << ", "
               << objInfos[i].rightBotX << ", " << objInfos[i].rightBotY << ") "
               << " confidence: " << objInfos[i].confidence << "  lable: " << objInfos[i].classId << std::endl;
     }
@@ -124,25 +133,30 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
     return APP_ERR_OK;
 }
 
-APP_ERROR PostProcess::YoloPostProcess(std::vector<RawData> &modelOutput, std::shared_ptr<DeviceStreamData> &dataToSend,std::vector<ObjDetectInfo> &objInfos)
+APP_ERROR PostProcess::YoloPostProcess(std::vector<RawData> &modelOutput, std::shared_ptr<DeviceStreamData> &dataToSend, std::vector<ObjDetectInfo> &objInfos)
 {
     const size_t outputLen = modelOutput.size();
-    if (outputLen <= 0) {
+    if (outputLen <= 0)
+    {
         LogError << "Failed to get model output data";
         return APP_ERR_INFER_GET_OUTPUT_FAIL;
     }
 
-    
     APP_ERROR ret;
-    if (modelType_ == YOLOV3_CAFFE) {
+    if (modelType_ == YOLOV3_CAFFE)
+    {
         ret = GetObjectInfoCaffe(modelOutput, objInfos);
-        if (ret != APP_ERR_OK) {
+        if (ret != APP_ERR_OK)
+        {
             LogError << "Failed to get Caffe model output, ret = " << ret;
             return ret;
         }
-    } else {
+    }
+    else
+    {
         ret = GetObjectInfoTensorflow(modelOutput, objInfos);
-        if (ret != APP_ERR_OK) {
+        if (ret != APP_ERR_OK)
+        {
             LogError << "Failed to get Caffe model output, ret = " << ret;
             return ret;
         }
@@ -151,32 +165,36 @@ APP_ERROR PostProcess::YoloPostProcess(std::vector<RawData> &modelOutput, std::s
     ConstructData(objInfos, dataToSend);
     // Write object info to result file
     ret = WriteResult(objInfos, dataToSend->channelId, dataToSend->framId);
-    if (ret != APP_ERR_OK) {
+    if (ret != APP_ERR_OK)
+    {
         LogError << "Failed to write result, ret = " << ret;
     }
     return APP_ERR_OK;
 }
 
 APP_ERROR PostProcess::GetObjectInfoCaffe(std::vector<RawData> &modelOutput,
-    std::vector<ObjDetectInfo> &objInfos)
+                                          std::vector<ObjDetectInfo> &objInfos)
 {
     std::vector<std::shared_ptr<void>> hostPtr;
     std::vector<void *> buffer = buffers_.front();
     buffers_.pop();
     buffers_.push(buffer);
-    for (size_t j = 0; j < modelOutput.size(); j++) {
+    for (size_t j = 0; j < modelOutput.size(); j++)
+    {
         void *hostPtrBuffer = buffer[j];
         std::shared_ptr<void> hostPtrBufferManager(hostPtrBuffer, [](void *) {});
         APP_ERROR ret = (APP_ERROR)aclrtMemcpy(hostPtrBuffer, modelOutput[j].lenOfByte, modelOutput[j].data.get(),
-            modelOutput[j].lenOfByte, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ret != APP_ERR_OK) {
+                                               modelOutput[j].lenOfByte, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != APP_ERR_OK)
+        {
             LogError << "Failed to copy output buffer of model from device to host, ret = " << ret;
             return ret;
         }
         hostPtr.push_back(hostPtrBufferManager);
     }
     uint32_t objNum = ((uint32_t *)(hostPtr[1].get()))[0];
-    for (uint32_t k = 0; k < objNum; k++) {
+    for (uint32_t k = 0; k < objNum; k++)
+    {
         int pos = 0;
         ObjDetectInfo objInfo;
         objInfo.leftTopX = ((float *)hostPtr[0].get())[objNum * (pos++) + k];
@@ -191,18 +209,20 @@ APP_ERROR PostProcess::GetObjectInfoCaffe(std::vector<RawData> &modelOutput,
 }
 
 APP_ERROR PostProcess::GetObjectInfoTensorflow(std::vector<RawData> &modelOutput,
-    std::vector<ObjDetectInfo> &objInfos)
+                                               std::vector<ObjDetectInfo> &objInfos)
 {
     std::vector<std::shared_ptr<void>> hostPtr;
     std::vector<void *> buffer = buffers_.front();
     buffers_.pop();
     buffers_.push(buffer);
-    for (size_t j = 0; j < modelOutput.size(); j++) {
+    for (size_t j = 0; j < modelOutput.size(); j++)
+    {
         void *hostPtrBuffer = buffer[j];
         std::shared_ptr<void> hostPtrBufferManager(hostPtrBuffer, [](void *) {});
         APP_ERROR ret = (APP_ERROR)aclrtMemcpy(hostPtrBuffer, modelOutput[j].lenOfByte, modelOutput[j].data.get(),
-            modelOutput[j].lenOfByte, ACL_MEMCPY_DEVICE_TO_HOST);
-        if (ret != APP_ERR_OK) {
+                                               modelOutput[j].lenOfByte, ACL_MEMCPY_DEVICE_TO_HOST);
+        if (ret != APP_ERR_OK)
+        {
             LogError << "Failed to copy output buffer of model from device to host, ret = " << ret;
             return ret;
         }
@@ -215,9 +235,11 @@ APP_ERROR PostProcess::GetObjectInfoTensorflow(std::vector<RawData> &modelOutput
 APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
 {
     std::shared_ptr<CommonData> data = std::static_pointer_cast<CommonData>(inputData);
-    if (data->eof) {
+    if (data->eof)
+    {
         Singleton::GetInstance().GetStopedStreamNum()++;
-        if (Singleton::GetInstance().GetStopedStreamNum() == Singleton::GetInstance().GetStreamPullerNum()) {
+        if (Singleton::GetInstance().GetStopedStreamNum() == Singleton::GetInstance().GetStreamPullerNum())
+        {
             Singleton::GetInstance().SetSignalRecieved(true);
         }
         return APP_ERR_OK;
@@ -231,15 +253,19 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     detectInfo->channelId = data->channelId;
 
     std::vector<ObjDetectInfo> objInfos;
-    APP_ERROR ret = YoloPostProcess(modelOutput, detectInfo,objInfos);
-    if (ret != APP_ERR_OK) {
+    APP_ERROR ret = YoloPostProcess(modelOutput, detectInfo, objInfos);
+    if (ret != APP_ERR_OK)
+    {
         acldvppFree(data->dvppData->data);
         LogError << "Failed to run YoloPostProcess, ret = " << ret;
         return ret;
     }
-    //test for streaming of data 
+
+    //test for streaming of data
     uint32_t objNum = objInfos.size();
-    std::cout << "Detected Obj:" << objNum <<std::endl;
+    std::cout << "Detected Obj:" << objNum << std::endl;
+
+    //copy the frame data from device to the host
     std::shared_ptr<void> vdecOutBufferDev(data->dvppData->data, acldvppFree);
     void *dataHost = malloc(data->dvppData->dataSize);
     if (dataHost == nullptr)
@@ -265,31 +291,83 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         int ibuf[1];
         ibuf[0] = total_pack;
         sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
-        
+
         string payloadData;
         std::stringstream sendingDataStream;
-        sendingDataStream << "Chnl" << detectInfo->channelId << "-Frme " 
-        << detectInfo->framId << " ObjDetNum" << "["<< objNum <<"]"<< "\n";
+        sendingDataStream << "Chnl" << detectInfo->channelId << "-Frme "
+                          << detectInfo->framId << " ObjDetNum"
+                          << "[" << objNum << "]"
+                          << "\n";
         // Write inference result into file
-        for (uint32_t i = 0; i < 2; i++) {
-        sendingDataStream << "#Obj" << i << ", " << "b[" << objInfos[i].leftTopX << "]" 
-                <<"["<< objInfos[i].leftTopY << "]"
-              <<"["<< objInfos[i].rightBotX <<"]"<< "[" << objInfos[i].rightBotY << "] "
-              << " c: [" << objInfos[i].confidence <<"]lbl:[" << objInfos[i].classId <<"]"<< "\n";
+        for (uint32_t i = 0; i < 2; i++)
+        {
+            sendingDataStream << "#Obj" << i << ", "
+                              << "b[" << objInfos[i].leftTopX << "]"
+                              << "[" << objInfos[i].leftTopY << "]"
+                              << "[" << objInfos[i].rightBotX << "]"
+                              << "[" << objInfos[i].rightBotY << "] "
+                              << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
+                              << "\n";
         }
         payloadData = sendingDataStream.str();
 
+        //======================================================
+        //testing for cropping the data
+
+        /* Crop in device */
+        DvppCropInputInfo cropInputData;
+        cropInputData.dataInfo.data = data->dvppData->data;
+        cropInputData.dataInfo.dataSize = data->dvppData->dataSize;
+        cropInputData.dataInfo.width = 416;
+        cropInputData.dataInfo.height = 416;
+        cropInputData.dataInfo.widthStride = DVPP_ALIGN_UP(416, VPC_STRIDE_WIDTH);
+        cropInputData.dataInfo.heightStride = DVPP_ALIGN_UP(416, VPC_STRIDE_HEIGHT);
+        cropInputData.dataInfo.format = (acldvppPixelFormat)1;
+        cropInputData.roi.left = 10;
+        cropInputData.roi.up = 10;
+        cropInputData.roi.right = 51;
+        cropInputData.roi.down = 51;
+
+        DvppDataInfo output;
+        output.width = 416;
+        output.height = 416;
+
+        DvppCommon *g_cropProcessObj = nullptr;
+        aclrtStream stream;
+        APP_ERROR errRet = aclrtCreateStream(&stream);
+        if (errRet != APP_ERR_OK)
+        {
+            LogError << "Failed to create stream, ret = " << errRet << ".";
+            return errRet;
+        }
+        g_cropProcessObj = new DvppCommon(stream);
+
+        errRet = g_cropProcessObj->Init();
+        if (errRet != APP_ERR_OK)
+        {
+            return errRet;
+        }
+
+        errRet = g_cropProcessObj->CombineCropProcess(cropInputData, output, true);
+        if (errRet != APP_ERR_OK)
+        {
+            LogError << "Failed to crop image, ret = " << errRet << ".";
+            return errRet;
+        }
+
+        //======================================================
+
         //send the image data
-         int index =0; 
-         for (int i = 0; i < total_pack - 2; i++){
-            sock.sendTo(static_cast<char*>(dataHost)+index, PACK_SIZE, servAddress, servPort);
-            index+=PACK_SIZE;
-         }
-         int remainingByte = data->dvppData->dataSize-index;
-         sock.sendTo(static_cast<char*>(dataHost)+index, remainingByte, servAddress, servPort);
+        int index = 0;
+        for (int i = 0; i < total_pack - 2; i++)
+        {
+            sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
+            index += PACK_SIZE;
+        }
+        int remainingByte = data->dvppData->dataSize - index;
+        sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
         sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
         std::cout << "streaming done" << std::endl;
-
     }
     catch (SocketException &e)
     {
@@ -304,10 +382,12 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
 
 APP_ERROR PostProcess::DeInit(void)
 {
-    while (!buffers_.empty()) {
+    while (!buffers_.empty())
+    {
         std::vector<void *> buffer = buffers_.front();
         buffers_.pop();
-        for (auto& j : buffer) {
+        for (auto &j : buffer)
+        {
             aclrtFreeHost(j);
         }
     }
