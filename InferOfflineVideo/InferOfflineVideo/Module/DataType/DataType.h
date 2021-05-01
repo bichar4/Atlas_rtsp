@@ -41,7 +41,6 @@ struct DvppDataInfoT {
     uint32_t srcImageWidth = 0;
     uint32_t srcImageHeight = 0;
     std::shared_ptr<DvppDataInfo> dvppData;
-    std::shared_ptr<DvppDataInfo> originalFrame;
 };
 
 struct YoloImageInfo {
@@ -59,7 +58,6 @@ struct CommonData {
     YoloImageInfo yoloImgInfo;
     uint32_t modelType = 0;
     std::shared_ptr<DvppDataInfo> dvppData;
-    std::shared_ptr<DvppDataInfo> originalFrame;
 };
 
 #endif

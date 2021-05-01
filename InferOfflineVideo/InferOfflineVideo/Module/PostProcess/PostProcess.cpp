@@ -39,6 +39,46 @@ PostProcess::PostProcess()
 
 PostProcess::~PostProcess() {}
 
+static std::shared_ptr<void> GetHostBuffer(const uint32_t &size)
+{
+    if (size == 0)
+    {
+        return nullptr;
+    }
+
+    void *buffer = nullptr;
+    APP_ERROR errRet = aclrtMallocHost(&buffer, size);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to malloc " << size << " bytes host buffer, ret = " << errRet << ".";
+        return nullptr;
+    }
+
+    return std::shared_ptr<void>(buffer, aclrtFreeHost);
+}
+static APP_ERROR CopyDevImageToHost(std::shared_ptr<DvppDataInfo> devImage, std::shared_ptr<void> bufHost,
+                                    const uint32_t bufSize)
+{
+    if ((devImage == nullptr) || (bufHost == nullptr) || (bufSize == 0))
+    {
+        return APP_ERR_ACL_INVALID_PARAM;
+    }
+
+    if (devImage->dataSize > bufSize)
+    {
+        return APP_ERR_ACL_INVALID_PARAM;
+    }
+
+    APP_ERROR errRet =
+        aclrtMemcpy(bufHost.get(), bufSize, devImage->data, devImage->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to copy data to host, ret = " << errRet << ".";
+        return APP_ERR_COMM_INNER;
+    }
+    return APP_ERR_OK;
+}
+
 APP_ERROR PostProcess::Init(ConfigParser &configParser, ModuleInitArgs &initArgs)
 {
     LogDebug << "Begin to init instance " << initArgs.instanceId;
@@ -285,12 +325,6 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         UDPSocket sock;
         string servAddress = "192.168.5.255";
         unsigned short servPort = 8888;
-        std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
-        int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
-        total_pack += 1;
-        int ibuf[1];
-        ibuf[0] = total_pack;
-        sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
 
         string payloadData;
         std::stringstream sendingDataStream;
@@ -355,19 +389,63 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
             return errRet;
         }
 
-        //======================================================
+        std::shared_ptr<DvppDataInfo> cropImage = g_cropProcessObj->GetCropedImage();
+        uint32_t cropImageSize = cropImage->dataSize;
+        if (cropImageSize == 0)
+        {
+            LogError << "Failed to crop Image, cropped image size is 0.";
+            return APP_ERR_DVPP_CROP_FAIL;
+        }
 
+        /* Get host buffer and copy cropped data from device to host */
+        std::shared_ptr<void> cropImageHost = GetHostBuffer(cropImageSize);
+        if (cropImageHost == nullptr)
+        {
+            LogError << "Failed to get image buffer for cropped image.";
+            return APP_ERR_DVPP_CROP_FAIL;
+        }
+
+        /* Copy device image back to host */
+        errRet = CopyDevImageToHost(cropImage, cropImageHost, cropImageSize);
+        if (errRet != APP_ERR_OK)
+        {
+            LogError << "Failed to copy cropped image from device to host.";
+            return errRet;
+        }
+        //======================================================
+        // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
+        // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
+                std::cout << "datasize: " << cropImageSize<< std::endl;
+        int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
+        total_pack += 1;
+        int ibuf[1];
+        ibuf[0] = total_pack;
+        sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
         //send the image data
         int index = 0;
         for (int i = 0; i < total_pack - 2; i++)
         {
-            sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
+            //sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
+            sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
+           
             index += PACK_SIZE;
         }
         int remainingByte = data->dvppData->dataSize - index;
-        sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
+        //sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
+        sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
+        
         sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
         std::cout << "streaming done" << std::endl;
+
+        //$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+        if (g_cropProcessObj != nullptr)
+        {
+            g_cropProcessObj->DeInit();
+            g_cropProcessObj->ReleaseDvppBuffer();
+            delete g_cropProcessObj;
+            g_cropProcessObj = nullptr;
+        }
+        //$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
     }
     catch (SocketException &e)
     {
