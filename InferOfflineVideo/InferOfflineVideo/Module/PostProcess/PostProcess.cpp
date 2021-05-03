@@ -79,6 +79,99 @@ static APP_ERROR CopyDevImageToHost(std::shared_ptr<DvppDataInfo> devImage, std:
     return APP_ERR_OK;
 }
 
+void fillCropInputData(DvppCropInputInfo &cropInputData, uint8_t *dataDev, uint32_t dataSize,
+                       Rect cropArea)
+{
+    /**
+     * cropInputData - Location where cropped data is to be stored
+     * dataDev - POinter to the original device data of image 
+     * datasize - THe datasize of original frame data 
+     * cropArea - rectangular area where data to be cropped.
+     */ 
+    cropInputData.dataInfo.data = static_cast<uint8_t *>(dataDev);
+    cropInputData.dataInfo.dataSize = dataSize;
+    cropInputData.dataInfo.width = 416;
+    cropInputData.dataInfo.height = 416;
+    cropInputData.dataInfo.widthStride = DVPP_ALIGN_UP(416, VPC_STRIDE_WIDTH);
+    cropInputData.dataInfo.heightStride = DVPP_ALIGN_UP(416, VPC_STRIDE_HEIGHT);
+    cropInputData.dataInfo.format = (acldvppPixelFormat)1;
+    cropInputData.roi.left = cropArea.x;
+    cropInputData.roi.up = cropArea.y;
+    cropInputData.roi.right = cropArea.width;
+    cropInputData.roi.down = cropArea.height;
+}
+
+static APP_ERROR cropImage( std::shared_ptr<void> &cropImageHost, uint32_t &cropImageSize, uint8_t *dataDev,uint32_t dataSize)
+{
+
+    /* Crop in device */
+    DvppCropInputInfo cropInputData;
+    Rect cropArea;
+    cropArea.x = 10;
+    cropArea.y = 10;
+    cropArea.width = 101;
+    cropArea.height = 101;
+    //make data ready for cropping 
+    fillCropInputData(cropInputData,dataDev,dataSize, cropArea);
+
+    DvppDataInfo output;
+    output.width = 416;
+    output.height = 416;
+    //initialize stream required for cropping 
+    DvppCommon *g_cropProcessObj = nullptr;
+    aclrtStream stream;
+    APP_ERROR errRet = aclrtCreateStream(&stream);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to create stream, ret = " << errRet << ".";
+        return errRet;
+    }
+    g_cropProcessObj = new DvppCommon(stream);
+
+    errRet = g_cropProcessObj->Init();
+    if (errRet != APP_ERR_OK)
+    {
+        return errRet;
+    }
+    //main crpping process
+    errRet = g_cropProcessObj->CombineCropProcess(cropInputData, output, true);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to crop image, ret = " << errRet << ".";
+        return errRet;
+    }
+    //get the deveice memory of cropped data 
+    std::shared_ptr<DvppDataInfo> cropImage = g_cropProcessObj->GetCropedImage();
+    cropImageSize = cropImage->dataSize;
+    if (cropImageSize == 0)
+    {
+        LogError << "Failed to crop Image, cropped image size is 0.";
+        return APP_ERR_DVPP_CROP_FAIL;
+    }
+    /* Get host buffer and copy cropped data from device to host */
+    cropImageHost = GetHostBuffer(cropImageSize);
+    if (cropImageHost == nullptr) {
+        LogError << "Failed to get image buffer for cropped image.";
+        return APP_ERR_DVPP_CROP_FAIL;
+    }
+    /* Copy device image back to host */
+    errRet = CopyDevImageToHost(cropImage, cropImageHost, cropImageSize);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to copy cropped image from device to host.";
+        return errRet;
+    }
+
+    //clear up the memories used
+    if (g_cropProcessObj != nullptr)
+    {
+        g_cropProcessObj->DeInit();
+        g_cropProcessObj->ReleaseDvppBuffer();
+        delete g_cropProcessObj;
+        g_cropProcessObj = nullptr;
+    }
+}
+
 APP_ERROR PostProcess::Init(ConfigParser &configParser, ModuleInitArgs &initArgs)
 {
     LogDebug << "Begin to init instance " << initArgs.instanceId;
@@ -346,76 +439,15 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         payloadData = sendingDataStream.str();
 
         //======================================================
-        //testing for cropping the data
-
-        /* Crop in device */
-        DvppCropInputInfo cropInputData;
-        cropInputData.dataInfo.data = data->dvppData->data;
-        cropInputData.dataInfo.dataSize = data->dvppData->dataSize;
-        cropInputData.dataInfo.width = 416;
-        cropInputData.dataInfo.height = 416;
-        cropInputData.dataInfo.widthStride = DVPP_ALIGN_UP(416, VPC_STRIDE_WIDTH);
-        cropInputData.dataInfo.heightStride = DVPP_ALIGN_UP(416, VPC_STRIDE_HEIGHT);
-        cropInputData.dataInfo.format = (acldvppPixelFormat)1;
-        cropInputData.roi.left = 10;
-        cropInputData.roi.up = 10;
-        cropInputData.roi.right = 51;
-        cropInputData.roi.down = 51;
-
-        DvppDataInfo output;
-        output.width = 416;
-        output.height = 416;
-
-        DvppCommon *g_cropProcessObj = nullptr;
-        aclrtStream stream;
-        APP_ERROR errRet = aclrtCreateStream(&stream);
-        if (errRet != APP_ERR_OK)
-        {
-            LogError << "Failed to create stream, ret = " << errRet << ".";
-            return errRet;
-        }
-        g_cropProcessObj = new DvppCommon(stream);
-
-        errRet = g_cropProcessObj->Init();
-        if (errRet != APP_ERR_OK)
-        {
-            return errRet;
-        }
-
-        errRet = g_cropProcessObj->CombineCropProcess(cropInputData, output, true);
-        if (errRet != APP_ERR_OK)
-        {
-            LogError << "Failed to crop image, ret = " << errRet << ".";
-            return errRet;
-        }
-
-        std::shared_ptr<DvppDataInfo> cropImage = g_cropProcessObj->GetCropedImage();
-        uint32_t cropImageSize = cropImage->dataSize;
-        if (cropImageSize == 0)
-        {
-            LogError << "Failed to crop Image, cropped image size is 0.";
-            return APP_ERR_DVPP_CROP_FAIL;
-        }
-
+        
         /* Get host buffer and copy cropped data from device to host */
-        std::shared_ptr<void> cropImageHost = GetHostBuffer(cropImageSize);
-        if (cropImageHost == nullptr)
-        {
-            LogError << "Failed to get image buffer for cropped image.";
-            return APP_ERR_DVPP_CROP_FAIL;
-        }
-
-        /* Copy device image back to host */
-        errRet = CopyDevImageToHost(cropImage, cropImageHost, cropImageSize);
-        if (errRet != APP_ERR_OK)
-        {
-            LogError << "Failed to copy cropped image from device to host.";
-            return errRet;
-        }
+        std::shared_ptr<void> cropImageHost;
+        uint32_t cropImageSize;
+        APP_ERROR ret = cropImage(cropImageHost,cropImageSize,data->dvppData->data,data->dvppData->dataSize);
         //======================================================
         // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
         // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
-                std::cout << "datasize: " << cropImageSize<< std::endl;
+        std::cout << "datasize: " << cropImageSize << std::endl;
         int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
         total_pack += 1;
         int ibuf[1];
@@ -427,25 +459,15 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         {
             //sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
             sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
-           
+
             index += PACK_SIZE;
         }
         int remainingByte = data->dvppData->dataSize - index;
         //sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
         sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
-        
+
         sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
         std::cout << "streaming done" << std::endl;
-
-        //$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
-        if (g_cropProcessObj != nullptr)
-        {
-            g_cropProcessObj->DeInit();
-            g_cropProcessObj->ReleaseDvppBuffer();
-            delete g_cropProcessObj;
-            g_cropProcessObj = nullptr;
-        }
-        //$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
     }
     catch (SocketException &e)
     {

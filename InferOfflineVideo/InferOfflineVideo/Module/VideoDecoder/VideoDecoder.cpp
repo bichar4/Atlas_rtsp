@@ -67,33 +67,7 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
         temp->widthStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.width, VPC_STRIDE_WIDTH);
         temp->dataSize = (uint32_t)acldvppGetPicDescSize(output);
         temp->data = (uint8_t *)acldvppGetPicDescData(output);
-        //==========================================================
-        //keep copy of temp data as an original frame
-        // std::shared_ptr<DvppDataInfo> originalFrame = std::make_shared<DvppDataInfo>();
-        // originalFrame->height = decodeInfo->frameInfo.height;
-        // originalFrame->width = decodeInfo->frameInfo.width;
-        // originalFrame->heightStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.height, VPC_STRIDE_HEIGHT);
-        // originalFrame->widthStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.width, VPC_STRIDE_WIDTH);
-        // originalFrame->dataSize = (uint32_t)acldvppGetPicDescSize(output);
-        // void *buffer = nullptr;
-        // /* Get host buffer for image */
-        // APP_ERROR errRet = aclrtMallocHost(&buffer, originalFrame->dataSize);
-        // if (errRet != APP_ERR_OK)
-        // {
-        //     LogError << "Failed to malloc " << originalFrame->dataSize << " bytes host buffer, ret = " << errRet << ".";
-        //     return;
-        // }
-        // std::shared_ptr<void> hostBuf = std::shared_ptr<void>(buffer, aclrtFreeHost);
-        // //copy from device to the host 
-        //  errRet =
-        //     aclrtMemcpy(hostBuf.get(), originalFrame->dataSize, temp->data,originalFrame->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
-        // if (errRet != APP_ERR_OK)
-        // {
-        //     LogError << "Failed to copy data to host, ret = " << errRet << ".";
-        //     return;
-        // }
-        // originalFrame->data = (uint8_t *)hostBuf.get();
-        //===========================================
+        
         DvppDataInfo out;
         out.height = videoDecoder->resizeHeight_;
         out.width = videoDecoder->resizeWidth_;
