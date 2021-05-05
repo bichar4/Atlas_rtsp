@@ -189,8 +189,6 @@ APP_ERROR ModelInfer::Process(std::shared_ptr<void> inputData)
     data->channelId = vpcData->channelId;
     data->frameId = vpcData->frameId;
     data->dvppData = vpcData->dvppData;
-    std::cout << "modelwidth" << modelWidth_ << std::endl;
-    std::cout << "modelHeifht" << modelHeight_<<std::endl;
     SendToNextModule(MT_PostProcess, data, data->channelId);
     return APP_ERR_OK;
 }

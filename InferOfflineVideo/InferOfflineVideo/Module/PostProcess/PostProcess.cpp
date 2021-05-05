@@ -87,7 +87,7 @@ void fillCropInputData(DvppCropInputInfo &cropInputData, uint8_t *dataDev, uint3
      * dataDev - POinter to the original device data of image 
      * datasize - THe datasize of original frame data 
      * cropArea - rectangular area where data to be cropped.
-     */ 
+     */
     cropInputData.dataInfo.data = static_cast<uint8_t *>(dataDev);
     cropInputData.dataInfo.dataSize = dataSize;
     cropInputData.dataInfo.width = 416;
@@ -101,23 +101,18 @@ void fillCropInputData(DvppCropInputInfo &cropInputData, uint8_t *dataDev, uint3
     cropInputData.roi.down = cropArea.height;
 }
 
-static APP_ERROR cropImage( std::shared_ptr<void> &cropImageHost, uint32_t &cropImageSize, uint8_t *dataDev,uint32_t dataSize)
+static APP_ERROR cropImage(std::shared_ptr<void> &cropImageHost, uint32_t &cropImageSize, uint8_t *dataDev, uint32_t dataSize, Rect cropArea)
 {
 
     /* Crop in device */
     DvppCropInputInfo cropInputData;
-    Rect cropArea;
-    cropArea.x = 10;
-    cropArea.y = 10;
-    cropArea.width = 101;
-    cropArea.height = 101;
-    //make data ready for cropping 
-    fillCropInputData(cropInputData,dataDev,dataSize, cropArea);
+    //make data ready for cropping
+    fillCropInputData(cropInputData, dataDev, dataSize, cropArea);
 
     DvppDataInfo output;
     output.width = 416;
     output.height = 416;
-    //initialize stream required for cropping 
+    //initialize stream required for cropping
     DvppCommon *g_cropProcessObj = nullptr;
     aclrtStream stream;
     APP_ERROR errRet = aclrtCreateStream(&stream);
@@ -140,7 +135,7 @@ static APP_ERROR cropImage( std::shared_ptr<void> &cropImageHost, uint32_t &crop
         LogError << "Failed to crop image, ret = " << errRet << ".";
         return errRet;
     }
-    //get the deveice memory of cropped data 
+    //get the deveice memory of cropped data
     std::shared_ptr<DvppDataInfo> cropImage = g_cropProcessObj->GetCropedImage();
     cropImageSize = cropImage->dataSize;
     if (cropImageSize == 0)
@@ -150,7 +145,8 @@ static APP_ERROR cropImage( std::shared_ptr<void> &cropImageHost, uint32_t &crop
     }
     /* Get host buffer and copy cropped data from device to host */
     cropImageHost = GetHostBuffer(cropImageSize);
-    if (cropImageHost == nullptr) {
+    if (cropImageHost == nullptr)
+    {
         LogError << "Failed to get image buffer for cropped image.";
         return APP_ERR_DVPP_CROP_FAIL;
     }
@@ -169,6 +165,47 @@ static APP_ERROR cropImage( std::shared_ptr<void> &cropImageHost, uint32_t &crop
         g_cropProcessObj->ReleaseDvppBuffer();
         delete g_cropProcessObj;
         g_cropProcessObj = nullptr;
+    }
+
+    errRet = aclrtDestroyStream(stream);
+    if (errRet != APP_ERR_OK)
+    {
+        LogError << "Failed to destory stream, ret = " << errRet << ".";
+        return errRet;
+    }
+}
+
+static APP_ERROR sendUDPData(string servAddress, unsigned short servPort, uint32_t dataSize, void *imageData, string payloadData)
+{
+    try
+    {
+        //create a udp socket
+        UDPSocket sock;
+        int total_pack = 1 + (dataSize - 1) / PACK_SIZE;
+        total_pack += 1;
+        int ibuf[1];
+        ibuf[0] = total_pack;
+        sock.sendTo(ibuf, sizeof(int), servAddress, servPort);
+
+        //send the image data
+        int index = 0;
+        for (int i = 0; i < total_pack - 2; i++)
+        {
+            sock.sendTo(static_cast<char *>(imageData) + index, PACK_SIZE, servAddress, servPort);
+            index += PACK_SIZE;
+        }
+        int remainingByte = dataSize - index;
+        sock.sendTo(static_cast<char *>(imageData) + index, remainingByte, servAddress, servPort);
+
+        sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
+        std::cout << "streaming done" << std::endl;
+        return APP_ERR_OK;
+    }
+    catch (SocketException &e)
+    {
+        cerr << e.what() << endl;
+        LogError << "THis is a streaming error ";
+        return APP_ERR_ACL_INVALID_PARAM;
     }
 }
 
@@ -412,22 +449,21 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         LogError << "acl memcpy data to host failed, dataSize= " << data->dvppData->dataSize << "ret= " << aclRet << "\n";
         free(dataHost);
     }
-    try
-    {
-        //create a udp socket
-        UDPSocket sock;
-        string servAddress = "192.168.5.255";
-        unsigned short servPort = 8888;
 
-        string payloadData;
-        std::stringstream sendingDataStream;
-        sendingDataStream << "Chnl" << detectInfo->channelId << "-Frme "
-                          << detectInfo->framId << " ObjDetNum"
-                          << "[" << objNum << "]"
-                          << "\n";
-        // Write inference result into file
-        for (uint32_t i = 0; i < 2; i++)
+    string payloadData;
+    std::stringstream sendingDataStream;
+    sendingDataStream << "Chnl" << detectInfo->channelId << "-Frme "
+                      << detectInfo->framId << " ObjDetNum"
+                      << "[" << objNum << "]"
+                      << "\n";
+
+    int plateCount = 0;
+    // convert the inference result into string
+    for (uint32_t i = 0; i < objNum; i++)
+    {
+        if (objInfos[i].classId == 54)
         {
+            plateCount++;
             sendingDataStream << "#Obj" << i << ", "
                               << "b[" << objInfos[i].leftTopX << "]"
                               << "[" << objInfos[i].leftTopY << "]"
@@ -436,14 +472,31 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                               << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
                               << "\n";
         }
-        payloadData = sendingDataStream.str();
+    }
+    std::cout << "plateCount = " << plateCount << std::endl;
+    payloadData = sendingDataStream.str();
+
+    //======================================================
+
+    /* Get host buffer and copy cropped data from device to host */
+    std::shared_ptr<void> cropImageHost;
+    uint32_t cropImageSize;
+    Rect cropArea;
+    cropArea.x = 0;
+    cropArea.y = 0;
+    cropArea.width = 415;
+    cropArea.height = 415;
+    ret = cropImage(cropImageHost, cropImageSize, data->dvppData->data, data->dvppData->dataSize, cropArea);
+    //======================================================
+    try
+    {
+        //create a udp socket
+        UDPSocket sock;
+        string servAddress = "192.168.5.255";
+        unsigned short servPort = 8888;
 
         //======================================================
-        
-        /* Get host buffer and copy cropped data from device to host */
-        std::shared_ptr<void> cropImageHost;
-        uint32_t cropImageSize;
-        APP_ERROR ret = cropImage(cropImageHost,cropImageSize,data->dvppData->data,data->dvppData->dataSize);
+
         //======================================================
         // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
         // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
@@ -474,6 +527,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         cerr << e.what() << endl;
         LogError << "THis is a streaming error ";
     }
+    //ret = sendUDPData(servAddress,servPort,cropImageSize,cropImageHost.get(),payloadData);
 
     free(dataHost);
     acldvppFree(data->dvppData->data);
