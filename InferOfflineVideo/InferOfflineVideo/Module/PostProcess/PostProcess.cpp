@@ -90,10 +90,10 @@ void fillCropInputData(DvppCropInputInfo &cropInputData, uint8_t *dataDev, uint3
      */
     cropInputData.dataInfo.data = static_cast<uint8_t *>(dataDev);
     cropInputData.dataInfo.dataSize = dataSize;
-    cropInputData.dataInfo.width = 416;
-    cropInputData.dataInfo.height = 416;
-    cropInputData.dataInfo.widthStride = DVPP_ALIGN_UP(416, VPC_STRIDE_WIDTH);
-    cropInputData.dataInfo.heightStride = DVPP_ALIGN_UP(416, VPC_STRIDE_HEIGHT);
+    cropInputData.dataInfo.width = 1920;
+    cropInputData.dataInfo.height = 1080;
+    cropInputData.dataInfo.widthStride = DVPP_ALIGN_UP(1920, VPC_STRIDE_WIDTH);
+    cropInputData.dataInfo.heightStride = DVPP_ALIGN_UP(1080, VPC_STRIDE_HEIGHT);
     cropInputData.dataInfo.format = (acldvppPixelFormat)1;
     cropInputData.roi.left = cropArea.x;
     cropInputData.roi.up = cropArea.y;
@@ -438,20 +438,20 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     uint32_t objNum = objInfos.size();
     std::cout << "Detected Obj:" << objNum << std::endl;
 
-    //copy the frame data from device to the host
-    std::shared_ptr<void> vdecOutBufferDev(data->dvppData->data, acldvppFree);
-    void *dataHost = malloc(data->dvppData->dataSize);
-    if (dataHost == nullptr)
-    {
-        LogError << "malloc host data buffer failed. dataSize= " << data->dvppData->dataSize << "\n";
-    }
-    // copy output to host memory
-    auto aclRet = aclrtMemcpy(dataHost, data->dvppData->dataSize, vdecOutBufferDev.get(), data->dvppData->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
-    if (aclRet != ACL_ERROR_NONE)
-    {
-        LogError << "acl memcpy data to host failed, dataSize= " << data->dvppData->dataSize << "ret= " << aclRet << "\n";
-        free(dataHost);
-    }
+    // //copy the frame data from device to the host
+    // std::shared_ptr<void> vdecOutBufferDev(data->dvppData->data, acldvppFree);
+    // void *dataHost = malloc(data->dvppData->dataSize);
+    // if (dataHost == nullptr)
+    // {
+    //     LogError << "malloc host data buffer failed. dataSize= " << data->dvppData->dataSize << "\n";
+    // }
+    // // copy output to host memory
+    // auto aclRet = aclrtMemcpy(dataHost, data->dvppData->dataSize, vdecOutBufferDev.get(), data->dvppData->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    // if (aclRet != ACL_ERROR_NONE)
+    // {
+    //     LogError << "acl memcpy data to host failed, dataSize= " << data->dvppData->dataSize << "ret= " << aclRet << "\n";
+    //     free(dataHost);
+    // }
 
     string payloadData;
     std::stringstream sendingDataStream;
@@ -465,8 +465,6 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     for (uint32_t i = 0; i < objNum; i++)
     {
         if(objInfos[i].classId == 2){
-            carCount++;
-        }
             sendingDataStream << "#Obj" << i << ", "
                               << "b[" << objInfos[i].leftTopX << "]"
                               << "[" << objInfos[i].leftTopY << "]"
@@ -474,6 +472,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                               << "[" << objInfos[i].rightBotY << "] "
                               << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
                               << "\n";
+        }
         
     }
     std::cout << "car detected" << carCount <<std::endl;
@@ -482,14 +481,14 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     //======================================================
 
     /* Get host buffer and copy cropped data from device to host */
-    //std::shared_ptr<void> cropImageHost;
-    // uint32_t cropImageSize;
-    // Rect cropArea;
-    // cropArea.x = 0;
-    // cropArea.y = 0;
-    // cropArea.width = 415;
-    // cropArea.height = 415;
-    // ret = cropImage(cropImageHost, cropImageSize, data->dvppData->data, data->dvppData->dataSize, cropArea);
+    std::shared_ptr<void> cropImageHost;
+    uint32_t cropImageSize;
+    Rect cropArea;
+    cropArea.x = 0;
+    cropArea.y = 0;
+    cropArea.width = 1001;
+    cropArea.height = 1001;
+    ret = cropImage(cropImageHost, cropImageSize, data->fullFrame->data, data->fullFrame->dataSize, cropArea);
     //======================================================
     try
     {
@@ -501,11 +500,11 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         //======================================================
 
         //======================================================
-        std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
-        std::cout << "framedatasize"<<data->fullFrame->dataSize <<std::endl;
-        int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
-        // std::cout << "datasize: " << cropImageSize << std::endl;
-        // int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
+        // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
+        // std::cout << "framedatasize"<<data->fullFrame->dataSize <<std::endl;
+        // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
+        std::cout << "datasize: " << cropImageSize << std::endl;
+        int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
         total_pack += 1;
         int ibuf[1];
         ibuf[0] = total_pack;
@@ -514,14 +513,15 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         int index = 0;
         for (int i = 0; i < total_pack - 2; i++)
         {
-            sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
-            //sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
+            //sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
+            sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
 
             index += PACK_SIZE;
         }
-        int remainingByte = data->dvppData->dataSize - index;
-        sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
-        //sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
+        //int remainingByte = data->fullFrame->dataSize - index;
+        int remainingByte = cropImageSize - index;
+        //sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
+        sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
 
         sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
         std::cout << "streaming done" << std::endl;
@@ -533,7 +533,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     }
     //ret = sendUDPData(servAddress,servPort,cropImageSize,cropImageHost.get(),payloadData);
 
-    free(dataHost);
+    // free(dataHost);
     acldvppFree(data->dvppData->data);
     acldvppFree(data->fullFrame->data);
     return APP_ERR_OK;
