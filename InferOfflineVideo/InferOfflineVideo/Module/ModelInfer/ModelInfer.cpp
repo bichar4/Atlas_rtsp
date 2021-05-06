@@ -157,8 +157,6 @@ APP_ERROR ModelInfer::Process(std::shared_ptr<void> inputData)
     srcImageWidth_ = vpcData->srcImageWidth;
     srcImageHeight_ = vpcData->srcImageHeight;
 
-    
-
     std::shared_ptr<DeviceStreamData> dataToSend = std::make_shared<DeviceStreamData>();
     std::vector<void *> outBuf;
     std::vector<size_t> outSizes;
@@ -175,7 +173,6 @@ APP_ERROR ModelInfer::Process(std::shared_ptr<void> inputData)
 
 
     //=======================
-    //did thid so that image frame goes to another pipeline
     //acldvppFree(vpcData->dvppData->data);
 
     std::shared_ptr<CommonData> data = std::make_shared<CommonData>();

@@ -25,8 +25,7 @@
 
 using namespace ascendBaseModule;
 
-namespace
-{
+namespace {
     const int CALLBACK_TRIGGER_TIME = 1000;
 }
 
@@ -41,33 +40,29 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
 {
     void *dataDev = acldvppGetStreamDescData(input);
     APP_ERROR ret = (APP_ERROR)acldvppFree(dataDev);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "fail to free input stream desc dataDev";
     }
     ret = (APP_ERROR)acldvppDestroyStreamDesc(input);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "fail to destroy input stream desc";
     }
 
     DecodeInfo *decodeInfo = (DecodeInfo *)userdata;
-    if (decodeInfo == nullptr)
-    {
+    if (decodeInfo == nullptr) {
         LogError << "VideoDecoder: user data is nullptr";
         return;
     }
-    VideoDecoder *videoDecoder = decodeInfo->videoDecoder;
-    if (videoDecoder->frameId % videoDecoder->skipInterval_ == 0)
-    {
+    VideoDecoder* videoDecoder = decodeInfo->videoDecoder;
+    if (videoDecoder->frameId % videoDecoder->skipInterval_ == 0) {
         std::shared_ptr<DvppDataInfo> temp = std::make_shared<DvppDataInfo>();
         temp->height = decodeInfo->frameInfo.height;
         temp->width = decodeInfo->frameInfo.width;
         temp->heightStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.height, VPC_STRIDE_HEIGHT);
         temp->widthStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.width, VPC_STRIDE_WIDTH);
         temp->dataSize = (uint32_t)acldvppGetPicDescSize(output);
-        temp->data = (uint8_t *)acldvppGetPicDescData(output);
-        
+        temp->data = (uint8_t*)acldvppGetPicDescData(output);
+
         DvppDataInfo out;
         out.height = videoDecoder->resizeHeight_;
         out.width = videoDecoder->resizeWidth_;
@@ -81,15 +76,12 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
         toNext->srcImageHeight = decodeInfo->frameInfo.height;
         toNext->frameId = videoDecoder->frameId;
         toNext->dvppData = std::move(temp);
-        // toNext->originalFrame = std::move(originalFrame);
-        //free(buffer);
         videoDecoder->SendToNextModule(MT_ModelInfer, toNext, toNext->channelId);
     }
     videoDecoder->frameId++;
     acldvppFree(acldvppGetPicDescData(output));
     ret = (APP_ERROR)acldvppDestroyPicDesc(output);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "Fail to destroy pic desc";
     }
     delete decodeInfo;
@@ -98,22 +90,19 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
 void *VideoDecoder::DecoderThread(void *arg)
 {
     VideoDecoder *videoDecoder = (VideoDecoder *)arg;
-    if (videoDecoder == nullptr)
-    {
+    if (videoDecoder == nullptr) {
         LogError << "arg is nullptr";
         return ((void *)(-1));
     }
 
     aclError ret = aclrtSetCurrentContext(videoDecoder->aclContext_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "Failed to set context, ret = " << ret;
         return ((void *)(-1));
     }
 
     LogInfo << "DecoderThread start";
-    while (!videoDecoder->stopDecoderThread_)
-    {
+    while (!videoDecoder->stopDecoderThread_) {
         (void)aclrtProcessReport(CALLBACK_TRIGGER_TIME);
     }
     return nullptr;
@@ -138,37 +127,33 @@ APP_ERROR VideoDecoder::Init(ConfigParser &configParser, ModuleInitArgs &initArg
     AssignInitArgs(initArgs);
 
     int ret = ParseConfig(configParser);
-    if (ret != APP_ERR_OK)
-    {
-        LogError << "VideoDecoder[" << instanceId_ << "]: Fail to parse config params." << GetAppErrCodeInfo(ret) << ".";
+    if (ret != APP_ERR_OK) {
+        LogError << "VideoDecoder[" << instanceId_ << "]: Fail to parse config params." << GetAppErrCodeInfo(ret) <<
+            ".";
         return ret;
     }
 
     int createThreadErr = pthread_create(&decoderThreadId_, nullptr, &VideoDecoder::DecoderThread, (void *)this);
-    if (createThreadErr != 0)
-    {
+    if (createThreadErr != 0) {
         LogError << "Failed to create thread, err = " << createThreadErr;
         return APP_ERR_ACL_FAILURE;
     }
-    LogInfo << "thread create ID = " << decoderThreadId_;
+    LogInfo <<"thread create ID = " << decoderThreadId_;
 
     ret = aclrtCreateStream(&vpcDvppStream_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "VideoDecoder[" << instanceId_ << "]: aclrtCreateStream failed, ret=" << ret << ".";
         return ret;
     }
 
     vpcDvppCommon_ = new DvppCommon(vpcDvppStream_);
-    if (vpcDvppCommon_ == nullptr)
-    {
+    if (vpcDvppCommon_ == nullptr) {
         LogError << "create vpcDvppCommon_ Failed";
         return APP_ERR_COMM_ALLOC_MEM;
     }
 
     ret = vpcDvppCommon_->Init();
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         delete vpcDvppCommon_;
         vpcDvppCommon_ = nullptr;
         LogError << "pDvpp_ Init Failed";
@@ -183,37 +168,32 @@ APP_ERROR VideoDecoder::ParseConfig(ConfigParser &configParser)
 {
     std::string itemCfgStr = moduleName_ + std::string(".resizeWidth");
     APP_ERROR ret = configParser.GetUnsignedIntValue(itemCfgStr, resizeWidth_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "VideoDecoder[" << instanceId_ << "]: Fail to get config variable named " << itemCfgStr << ".";
         return ret;
     }
 
     itemCfgStr = moduleName_ + std::string(".resizeWidth");
     ret = configParser.GetUnsignedIntValue(itemCfgStr, resizeHeight_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "VideoDecoder[" << instanceId_ << "]: Fail to get config variable named " << itemCfgStr << ".";
         return ret;
     }
 
     itemCfgStr = std::string("SystemConfig.deviceId");
     ret = configParser.GetIntValue(itemCfgStr, deviceId_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "VideoDecoder[" << instanceId_ << "]: Fail to get config variable named " << itemCfgStr << ".";
         return ret;
     }
 
     itemCfgStr = std::string("skipInterval");
     ret = configParser.GetUnsignedIntValue(itemCfgStr, skipInterval_);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "VideoDecoder[" << instanceId_ << "]: Fail to get config variable named " << itemCfgStr << ".";
         return ret;
     }
-    if (skipInterval_ == 0)
-    {
+    if (skipInterval_ == 0) {
         LogError << "The value of skipInterval_ must be greater than 0";
         return APP_ERR_ACL_FAILURE;
     }
@@ -226,15 +206,13 @@ APP_ERROR VideoDecoder::CreateVdecDvppCommon(acldvppStreamFormat format)
     auto vdecConfig = GetVdecConfig();
     vdecConfig.inFormat = format;
     vdecDvppCommon_ = new DvppCommon(vdecConfig);
-    if (vdecDvppCommon_ == nullptr)
-    {
+    if (vdecDvppCommon_ == nullptr) {
         LogError << "create vdecDvppCommon_ Failed";
         return APP_ERR_COMM_ALLOC_MEM;
     }
 
     APP_ERROR ret = vdecDvppCommon_->InitVdec();
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         delete vdecDvppCommon_;
         LogError << "vdecDvppCommon_ InitVdec Failed";
         return ret;
@@ -245,11 +223,9 @@ APP_ERROR VideoDecoder::CreateVdecDvppCommon(acldvppStreamFormat format)
 APP_ERROR VideoDecoder::Process(std::shared_ptr<void> inputData)
 {
     std::shared_ptr<FrameData> frameData = std::static_pointer_cast<FrameData>(inputData);
-    if (frameData->frameInfo.eof)
-    {
+    if (frameData->frameInfo.eof) {
         APP_ERROR ret = vdecDvppCommon_->VdecSendEosFrame();
-        if (ret != APP_ERR_OK)
-        {
+        if (ret != APP_ERR_OK) {
             LogError << "Failed to send eos frame, ret = " << ret;
             return ret;
         }
@@ -262,11 +238,9 @@ APP_ERROR VideoDecoder::Process(std::shared_ptr<void> inputData)
     streamWidth_ = frameData->frameInfo.width;
     streamHeight_ = frameData->frameInfo.height;
 
-    if (vdecDvppCommon_ == nullptr)
-    {
+    if (vdecDvppCommon_ == nullptr) {
         APP_ERROR ret = CreateVdecDvppCommon(frameData->frameInfo.format);
-        if (ret != APP_ERR_OK)
-        {
+        if (ret != APP_ERR_OK) {
             LogError << "CreateVdecDvppCommon Failed";
             return ret;
         }
@@ -281,8 +255,7 @@ APP_ERROR VideoDecoder::Process(std::shared_ptr<void> inputData)
     decodeInfo->videoDecoder = this;
 
     APP_ERROR ret = vdecDvppCommon_->CombineVdecProcess(vdecData, decodeInfo);
-    if (ret != APP_ERR_OK)
-    {
+    if (ret != APP_ERR_OK) {
         LogError << "Failed to do VdecProcess, ret = " << ret;
         return ret;
     }
@@ -294,11 +267,9 @@ APP_ERROR VideoDecoder::DeInit(void)
 {
     LogDebug << "VideoDecoder [" << instanceId_ << "] begin to deinit";
 
-    if (vdecDvppCommon_)
-    {
+    if (vdecDvppCommon_) {
         APP_ERROR ret = vdecDvppCommon_->DeInit();
-        if (ret != APP_ERR_OK)
-        {
+        if (ret != APP_ERR_OK) {
             LogError << "Failed to deinitialize vdecDvppCommon, ret = " << ret;
             return ret;
         }
@@ -308,22 +279,18 @@ APP_ERROR VideoDecoder::DeInit(void)
     stopDecoderThread_ = true;
     pthread_join(decoderThreadId_, NULL);
 
-    if (vpcDvppCommon_)
-    {
+    if (vpcDvppCommon_) {
         APP_ERROR ret = vpcDvppCommon_->DeInit();
-        if (ret != APP_ERR_OK)
-        {
+        if (ret != APP_ERR_OK) {
             LogError << "Failed to deinitialize vpcDvppCommon, ret = " << ret;
             return ret;
         }
         delete vpcDvppCommon_;
     }
 
-    if (vpcDvppStream_)
-    {
+    if (vpcDvppStream_) {
         APP_ERROR ret = aclrtDestroyStream(vpcDvppStream_);
-        if (ret != APP_ERR_OK)
-        {
+        if (ret != APP_ERR_OK) {
             LogError << "Failed to destroy stream, ret = " << ret;
             return ret;
         }

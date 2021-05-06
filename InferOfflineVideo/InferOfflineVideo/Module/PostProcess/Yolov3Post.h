@@ -21,7 +21,7 @@
 #include <memory>
 #include "DataType/DataType.h"
 
-const int CLASS_NUM = 1;
+const int CLASS_NUM = 80;
 const int DEPTH = 255; // (4(box: x, y, h, w) + 1(confidence) + 80(classNum)) * 3(anchorNum)
 const int BIASES_NUM = 18; // Yolov3 anchors, generate from train data, coco dataset
 const float BIASES[BIASES_NUM] = {10, 13, 16, 30, 33, 23, 30, 61, 62, 45, 59, 119, 116, 90, 156, 198, 373, 326};

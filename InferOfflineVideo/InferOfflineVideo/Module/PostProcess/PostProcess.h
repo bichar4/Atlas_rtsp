@@ -43,8 +43,6 @@ private:
     APP_ERROR WriteResult(const std::vector<ObjDetectInfo> &objInfos, uint32_t channelId, uint32_t frameId);
 
     uint32_t modelType_ = 0;
-    uint32_t modelWidth_ = 0;
-    uint32_t modelHeight_ = 0;
     YoloImageInfo yoloImageInfo_;
     std::queue<std::vector<void *>> buffers_;
 };

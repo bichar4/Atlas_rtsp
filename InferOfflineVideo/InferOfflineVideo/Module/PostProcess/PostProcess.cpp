@@ -173,6 +173,8 @@ static APP_ERROR cropImage(std::shared_ptr<void> &cropImageHost, uint32_t &cropI
         LogError << "Failed to destory stream, ret = " << errRet << ".";
         return errRet;
     }
+
+    return APP_ERR_OK;
 }
 
 static APP_ERROR sendUDPData(string servAddress, unsigned short servPort, uint32_t dataSize, void *imageData, string payloadData)
@@ -254,6 +256,7 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
 {
     std::string resultPathName = "result";
     uint32_t objNum = objInfos.size();
+    std::cout << "detected ob fromwrite file " << objNum << std::endl;
     // Create result directory when it does not exist
     if (access(resultPathName.c_str(), 0) != 0)
     {
@@ -457,13 +460,13 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                       << "[" << objNum << "]"
                       << "\n";
 
-    int plateCount = 0;
+    int carCount = 0;
     // convert the inference result into string
     for (uint32_t i = 0; i < objNum; i++)
     {
-        if (objInfos[i].classId == 54)
-        {
-            plateCount++;
+        if(objInfos[i].classId == 2){
+            carCount++;
+        }
             sendingDataStream << "#Obj" << i << ", "
                               << "b[" << objInfos[i].leftTopX << "]"
                               << "[" << objInfos[i].leftTopY << "]"
@@ -471,22 +474,22 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                               << "[" << objInfos[i].rightBotY << "] "
                               << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
                               << "\n";
-        }
+        
     }
-    std::cout << "plateCount = " << plateCount << std::endl;
+    std::cout << "car detected" << carCount <<std::endl;
     payloadData = sendingDataStream.str();
 
     //======================================================
 
     /* Get host buffer and copy cropped data from device to host */
-    std::shared_ptr<void> cropImageHost;
-    uint32_t cropImageSize;
-    Rect cropArea;
-    cropArea.x = 0;
-    cropArea.y = 0;
-    cropArea.width = 415;
-    cropArea.height = 415;
-    ret = cropImage(cropImageHost, cropImageSize, data->dvppData->data, data->dvppData->dataSize, cropArea);
+    //std::shared_ptr<void> cropImageHost;
+    // uint32_t cropImageSize;
+    // Rect cropArea;
+    // cropArea.x = 0;
+    // cropArea.y = 0;
+    // cropArea.width = 415;
+    // cropArea.height = 415;
+    // ret = cropImage(cropImageHost, cropImageSize, data->dvppData->data, data->dvppData->dataSize, cropArea);
     //======================================================
     try
     {
@@ -498,10 +501,10 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         //======================================================
 
         //======================================================
-        // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
-        // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
-        std::cout << "datasize: " << cropImageSize << std::endl;
-        int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
+        std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
+        int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
+        // std::cout << "datasize: " << cropImageSize << std::endl;
+        // int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
         total_pack += 1;
         int ibuf[1];
         ibuf[0] = total_pack;
@@ -510,14 +513,14 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         int index = 0;
         for (int i = 0; i < total_pack - 2; i++)
         {
-            //sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
-            sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
+            sock.sendTo(static_cast<char *>(dataHost) + index, PACK_SIZE, servAddress, servPort);
+            //sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, PACK_SIZE, servAddress, servPort);
 
             index += PACK_SIZE;
         }
         int remainingByte = data->dvppData->dataSize - index;
-        //sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
-        sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
+        sock.sendTo(static_cast<char *>(dataHost) + index, remainingByte, servAddress, servPort);
+        //sock.sendTo(static_cast<char *>(cropImageHost.get()) + index, remainingByte, servAddress, servPort);
 
         sock.sendTo(payloadData.c_str(), payloadData.size(), servAddress, servPort);
         std::cout << "streaming done" << std::endl;
