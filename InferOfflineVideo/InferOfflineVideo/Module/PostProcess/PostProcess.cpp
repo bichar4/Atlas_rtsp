@@ -461,10 +461,32 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                       << "\n";
 
     int carCount = 0;
+
+    uint32_t cropImageSize;
+    Rect cropArea;
+    //when nothing is detected send the full frame
+    cropArea.x = 0;
+    cropArea.y = 0;
+    cropArea.width = 1919;
+    cropArea.height = 1079;
     // convert the inference result into string
     for (uint32_t i = 0; i < objNum; i++)
     {
-        if(objInfos[i].classId == 2){
+        if (objInfos[i].classId == 2)
+        {
+            int leftTopX = floor(objInfos[i].leftTopX);
+            std::cout << "leftTopX" << leftTopX << std::endl;
+            int leftTopY = floor(objInfos[i].leftTopY);
+            std::cout << "leftTopY" << leftTopY << std::endl;
+            int rightBotX = floor(objInfos[i].rightBotX);
+            std::cout << "rightBotX" << rightBotX << std::endl;
+            int rightBotY =  floor(objInfos[i].rightBotY);
+            std::cout << "rightBotY" << rightBotY << std::endl;
+
+            cropArea.x = (leftTopX % 2 == 0) ? leftTopX : leftTopX -1;
+            cropArea.y = (leftTopY %2==0) ? leftTopY:leftTopY-1;
+            cropArea.width = ( rightBotX %2==0) ? rightBotX-1 :  rightBotX;
+            cropArea.height = (rightBotY %2==0) ? rightBotY -1 : rightBotY; 
             sendingDataStream << "#Obj" << i << ", "
                               << "b[" << objInfos[i].leftTopX << "]"
                               << "[" << objInfos[i].leftTopY << "]"
@@ -473,21 +495,14 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                               << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
                               << "\n";
         }
-        
     }
-    std::cout << "car detected" << carCount <<std::endl;
+    std::cout << "car detected" << carCount << std::endl;
     payloadData = sendingDataStream.str();
 
     //======================================================
 
     /* Get host buffer and copy cropped data from device to host */
     std::shared_ptr<void> cropImageHost;
-    uint32_t cropImageSize;
-    Rect cropArea;
-    cropArea.x = 0;
-    cropArea.y = 0;
-    cropArea.width = 1001;
-    cropArea.height = 1001;
     ret = cropImage(cropImageHost, cropImageSize, data->fullFrame->data, data->fullFrame->dataSize, cropArea);
     //======================================================
     try
