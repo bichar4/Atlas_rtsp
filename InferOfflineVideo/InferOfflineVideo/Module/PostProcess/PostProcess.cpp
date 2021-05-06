@@ -256,7 +256,6 @@ APP_ERROR PostProcess::WriteResult(const std::vector<ObjDetectInfo> &objInfos, u
 {
     std::string resultPathName = "result";
     uint32_t objNum = objInfos.size();
-    std::cout << "detected ob fromwrite file " << objNum << std::endl;
     // Create result directory when it does not exist
     if (access(resultPathName.c_str(), 0) != 0)
     {
@@ -430,6 +429,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     if (ret != APP_ERR_OK)
     {
         acldvppFree(data->dvppData->data);
+        acldvppFree(data->fullFrame->data);
         LogError << "Failed to run YoloPostProcess, ret = " << ret;
         return ret;
     }
@@ -502,6 +502,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
 
         //======================================================
         std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
+        std::cout << "framedatasize"<<data->fullFrame->dataSize <<std::endl;
         int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
         // std::cout << "datasize: " << cropImageSize << std::endl;
         // int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
@@ -534,6 +535,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
 
     free(dataHost);
     acldvppFree(data->dvppData->data);
+    acldvppFree(data->fullFrame->data);
     return APP_ERR_OK;
 }
 

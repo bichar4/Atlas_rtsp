@@ -63,6 +63,22 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
         temp->dataSize = (uint32_t)acldvppGetPicDescSize(output);
         temp->data = (uint8_t*)acldvppGetPicDescData(output);
 
+        //====================================
+        std::shared_ptr<DvppDataInfo> fullFrame = std::make_shared<DvppDataInfo>();
+        fullFrame->height = decodeInfo->frameInfo.height;
+        fullFrame->width = decodeInfo->frameInfo.width;
+        fullFrame->heightStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.height, VPC_STRIDE_HEIGHT);
+        fullFrame->widthStride = DVPP_ALIGN_UP(decodeInfo->frameInfo.width, VPC_STRIDE_WIDTH);
+        fullFrame->dataSize = (uint32_t)acldvppGetPicDescSize(output);
+        fullFrame->data = (uint8_t*)acldvppGetPicDescData(output);
+
+        DvppDataInfo full;
+        full.height = decodeInfo->frameInfo.height;
+        full.width = decodeInfo->frameInfo.width;
+        videoDecoder->vpcDvppCommon_->CombineResizeProcess(*fullFrame, full, true, VPC_PT_FIT);
+        fullFrame = videoDecoder->vpcDvppCommon_->GetResizedImage();
+        //====================================
+
         DvppDataInfo out;
         out.height = videoDecoder->resizeHeight_;
         out.width = videoDecoder->resizeWidth_;
@@ -76,6 +92,7 @@ void VideoDecoder::VideoDecoderCallBack(acldvppStreamDesc *input, acldvppPicDesc
         toNext->srcImageHeight = decodeInfo->frameInfo.height;
         toNext->frameId = videoDecoder->frameId;
         toNext->dvppData = std::move(temp);
+        toNext->fullFrame = fullFrame;
         videoDecoder->SendToNextModule(MT_ModelInfer, toNext, toNext->channelId);
     }
     videoDecoder->frameId++;
