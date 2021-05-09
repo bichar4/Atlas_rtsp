@@ -424,6 +424,8 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     detectInfo->framId = data->frameId;
     detectInfo->channelId = data->channelId;
 
+    std::cout << "The detected frame is " << data->frameId <<std::endl;
+
     std::vector<ObjDetectInfo> objInfos;
     APP_ERROR ret = YoloPostProcess(modelOutput, detectInfo, objInfos);
     if (ret != APP_ERR_OK)
@@ -434,22 +436,22 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         return ret;
     }
 
-    //test for streaming of data
+    // //test for streaming of data
     uint32_t objNum = objInfos.size();
     std::cout << "Detected Obj:" << objNum << std::endl;
 
     // //copy the frame data from device to the host
-    // std::shared_ptr<void> vdecOutBufferDev(data->dvppData->data, acldvppFree);
-    // void *dataHost = malloc(data->dvppData->dataSize);
+    // std::shared_ptr<void> vdecOutBufferDev(data->fullFrame->data, acldvppFree);
+    // void *dataHost = malloc(data->fullFrame->dataSize);
     // if (dataHost == nullptr)
     // {
-    //     LogError << "malloc host data buffer failed. dataSize= " << data->dvppData->dataSize << "\n";
+    //     LogError << "malloc host data buffer failed. dataSize= " << data->fullFrame->dataSize << "\n";
     // }
     // // copy output to host memory
-    // auto aclRet = aclrtMemcpy(dataHost, data->dvppData->dataSize, vdecOutBufferDev.get(), data->dvppData->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
+    // auto aclRet = aclrtMemcpy(dataHost, data->fullFrame->dataSize, vdecOutBufferDev.get(), data->fullFrame->dataSize, ACL_MEMCPY_DEVICE_TO_HOST);
     // if (aclRet != ACL_ERROR_NONE)
     // {
-    //     LogError << "acl memcpy data to host failed, dataSize= " << data->dvppData->dataSize << "ret= " << aclRet << "\n";
+    //     LogError << "acl memcpy data to host failed, dataSize= " << data->fullFrame->dataSize << "ret= " << aclRet << "\n";
     //     free(dataHost);
     // }
 
@@ -472,7 +474,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     // convert the inference result into string
     for (uint32_t i = 0; i < objNum; i++)
     {
-        if (objInfos[i].classId == 2)
+        if (objInfos[i].classId == 54)
         {
             int leftTopX = floor(objInfos[i].leftTopX);
             std::cout << "leftTopX" << leftTopX << std::endl;
@@ -494,14 +496,15 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
                               << "[" << objInfos[i].rightBotY << "] "
                               << " c: [" << objInfos[i].confidence << "]lbl:[" << objInfos[i].classId << "]"
                               << "\n";
+            break;
         }
     }
-    std::cout << "car detected" << carCount << std::endl;
     payloadData = sendingDataStream.str();
 
     //======================================================
 
     /* Get host buffer and copy cropped data from device to host */
+    std::cout << "Cropped Image frameId" << data->frameId << std::endl;
     std::shared_ptr<void> cropImageHost;
     ret = cropImage(cropImageHost, cropImageSize, data->fullFrame->data, data->fullFrame->dataSize, cropArea);
     //======================================================
@@ -517,7 +520,7 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
         //======================================================
         // std::cout << "datasize: " << data->dvppData->dataSize << std::endl;
         // std::cout << "framedatasize"<<data->fullFrame->dataSize <<std::endl;
-        // int total_pack = 1 + (data->dvppData->dataSize - 1) / PACK_SIZE;
+        // int total_pack = 1 + (data->fullFrame->dataSize - 1) / PACK_SIZE;
         std::cout << "datasize: " << cropImageSize << std::endl;
         int total_pack = 1 + (cropImageSize - 1) / PACK_SIZE;
         total_pack += 1;
