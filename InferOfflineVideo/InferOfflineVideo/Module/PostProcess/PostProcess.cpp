@@ -404,6 +404,16 @@ APP_ERROR PostProcess::GetObjectInfoTensorflow(std::vector<RawData> &modelOutput
     return APP_ERR_OK;
 }
 
+float getMinimum(float minimum,float value){
+    if(value < minimum) return minimum;
+    return value;
+}
+
+float getMaximum(float maximum, float value){
+    if(value > maximum ) return maximum;
+    return value;
+}
+
 APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
 {
     std::shared_ptr<CommonData> data = std::static_pointer_cast<CommonData>(inputData);
@@ -471,18 +481,19 @@ APP_ERROR PostProcess::Process(std::shared_ptr<void> inputData)
     cropArea.y = 0;
     cropArea.width = 1919;
     cropArea.height = 1079;
+    int margin = 200;
     // convert the inference result into string
     for (uint32_t i = 0; i < objNum; i++)
     {
         if (objInfos[i].classId == 54)
         {
-            int leftTopX = floor(objInfos[i].leftTopX);
+            int leftTopX = getMinimum(0,floor(objInfos[i].leftTopX) - margin);
             std::cout << "leftTopX" << leftTopX << std::endl;
-            int leftTopY = floor(objInfos[i].leftTopY);
+            int leftTopY = getMinimum(0,floor(objInfos[i].leftTopY) - margin);
             std::cout << "leftTopY" << leftTopY << std::endl;
-            int rightBotX = floor(objInfos[i].rightBotX);
+            int rightBotX = getMaximum(1920,floor(objInfos[i].rightBotX)+margin);
             std::cout << "rightBotX" << rightBotX << std::endl;
-            int rightBotY =  floor(objInfos[i].rightBotY);
+            int rightBotY =  getMaximum(1079,floor(objInfos[i].rightBotY)+margin);
             std::cout << "rightBotY" << rightBotY << std::endl;
 
             cropArea.x = (leftTopX % 2 == 0) ? leftTopX : leftTopX -1;

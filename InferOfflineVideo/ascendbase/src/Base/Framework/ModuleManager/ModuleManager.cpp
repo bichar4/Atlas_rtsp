@@ -21,7 +21,7 @@
 #endif
 
 namespace ascendBaseModule {
-const int MODULE_QUEUE_SIZE = 200;
+const int MODULE_QUEUE_SIZE = 1;
 
 ModuleManager::ModuleManager() {}
 
